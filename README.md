@@ -4,6 +4,8 @@ Schiena helps you improve how you sit at your desk. You put your phone at your s
 
 You then ask Claude Code to look at the results. It writes a short report, suggests one change to try (raise the monitor, move the keyboard closer, take breaks…), and after another session tells you whether the change made a measurable difference.
 
+![The live dashboard during a session: a 3D model of the body at the desk, the phone's camera view with the tracked joints, and each measurement compared with the user's relaxed standing posture](docs/images/dashboard.jpg)
+
 Schiena is not a medical device and doesn't diagnose anything. It compares you with yourself: how you sit today against how you sat before a change.
 
 ## What you need
