@@ -1,5 +1,6 @@
 // Phone: personal calibration — height + relaxed standing photos (side and front) on a timer.
 import { useEffect, useRef, useState } from "react";
+import { gravity, startGravity } from "../gravity";
 
 type View = "side" | "front";
 interface Result { ok: boolean; problems: string[] }
@@ -47,10 +48,10 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
     setHeightSaved(r.ok);
   }
 
-  async function upload(view: View, blob: Blob) {
+  async function upload(view: View, blob: Blob, g: string | null = null) {
     setResults((r) => ({ ...r, [view]: "busy" }));
     try {
-      const r = await fetch(`/api/camera/calibration/${view}`, { method: "POST", body: blob, headers: { "content-type": "image/jpeg" } });
+      const r = await fetch(`/api/camera/calibration/${view}`, { method: "POST", body: blob, headers: { "content-type": "image/jpeg", ...(g ? { "x-gravity": g } : {}) } });
       const res: Result = r.ok ? await r.json() : { ok: false, problems: [`Server error ${r.status}`] };
       setResults((x) => ({ ...x, [view]: res }));
     } catch {
@@ -59,6 +60,7 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
   }
 
   async function shoot(view: View) {
+    const motion = startGravity(); // inside the tap, before any await
     if (!stream.current) {
       stream.current = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -74,6 +76,8 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
       await new Promise((r) => setTimeout(r, 1000));
     }
     setCount(0);
+    await motion;
+    const g = gravity();
     const v = video.current!;
     const c = document.createElement("canvas");
     c.width = v.videoWidth;
@@ -81,7 +85,7 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
     c.getContext("2d")!.drawImage(v, 0, 0);
     const blob = await new Promise<Blob | null>((r) => c.toBlob(r, "image/jpeg", 0.9));
     setShooting(null);
-    if (blob) await upload(view, blob);
+    if (blob) await upload(view, blob, g);
   }
 
   async function fromFile(view: View, files: FileList | null) {

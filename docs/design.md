@@ -40,6 +40,7 @@ Phone (browser, no app)          Computer: `uv run schiena` (Python)            
 | `history.py` | Intervention Outcome and Plateau (pure) |
 | `findings.py` | Deterministic Findings from a summary (pure) |
 | `calibration.py` | Height, standing reference photos, scale (pure) |
+| `camera.py` | Phone tilt from gravity, levelling, side angle (pure) |
 | `workstation.py` | Image points → body-relative metres (pure) |
 | `pose.py` | MediaPipe wrapper, Sample construction |
 | `server.py` | Live pipeline and HTTP API |
@@ -81,11 +82,21 @@ Hidden joints (visibility < 0.5) give no value; nothing is estimated. MediaPipe 
 
 ## Sessions
 
-- A Session starts by itself once the framing check holds for 5 s (person found; ear, shoulder, hip visible; pure side view; body size in range) and lasts 30 minutes of wall clock.
+- A Session starts by itself once the framing check holds for 5 s (person found; ear, shoulder, hip visible; side view within 30°; body size in range) and lasts 30 minutes of wall clock.
 - **Absence**: out of frame, or the hip rises more than half a trunk length above its seated height, for ≥ 5 s. Absences closer than 5 s are merged. Absence is excluded from presence, not counted as invalid.
 - **Interruption**: more than 3 s with no Samples at all (phone call, Wi-Fi, battery, computer asleep). Neither presence nor Absence. Frames carry the phone's capture time (`X-Captured-At`); while the computer is unreachable the phone queues frames (1/s, up to 15 min) and uploads them later at their real time. The camera is restarted after a call, and a reloaded page resumes the same Session.
 - The server closes a Session at 30 min once the phone's backlog is in (at most 15 min later), finishes Sessions left open by a crash on its next start (`recovered: true`), and keeps macOS awake with `caffeinate` while recording.
 - **Accepted** with ≥ 20 min of presence and ≥ 80% valid Samples over presence.
+
+## Phone placement
+
+The phone only has to be roughly upright, beside the user, seeing them from the side. It may stand somewhere else each time (`camera.py`):
+
+- **Distance and position in the image** don't change angles or `head_offset` (a ratio of lengths), so they are neither corrected nor checked between Sessions.
+- **Tilt.** A phone leaning 3° sideways would shift every angle by 3°. The phone sends its gravity vector (`X-Gravity`, from `devicemotion`) with each frame; landmarks and the person mask are re-projected onto a level virtual camera (a rotation-only homography; the focal length is assumed, which only matters for the forward/backward tilt) before measuring. Stored `kp`, `back` and `hip` stay in frame coordinates so they can be drawn on the frame; `camera` (`roll`, `pitch`) says how to level them, in Python and in the dashboard (`leveller` in `lib.ts`). Sessions recorded without it are measured as if the phone were level.
+- **Side angle (yaw)**: estimated per Sample from MediaPipe's world landmarks (`yaw`, 0 = pure side view). Not corrected (at 15° a 30° angle reads 0.9° low); framing requires |yaw| ≤ 30° and Sessions more than 15° apart are flagged as not fully comparable.
+- **Camera height** still changes the perspective a little (looking down at the head vs up at it); keep the phone around chest height.
+- **The desk in 3D** is stored relative to the usual seated hip of the Session it was reconstructed on (`anchor`); every Session draws it around its own usual hip, so moving the phone doesn't require `/calibrate` again — moving the desk or chair does.
 
 ## Calibration
 
@@ -108,13 +119,14 @@ Baseline 1 → Baseline 2 → one Intervention → Reassessment → keep or reve
   Summaries are recomputed from the Samples when an Intervention is evaluated, so older Sessions get the newer fields.
 - **Discomfort**: rated 0–10 after each Session (neck, shoulders, upper back, lower back, wrists, legs).
 - **Outcome**: *successful* if a target Metric moves the expected way by more than the Reference Variability and discomfort doesn't worsen; *comfort-only improvement* if only discomfort improves; otherwise *inconclusive*, with a probable cause (*no measurable effect*, *worse comfort*, *not comparable*, *not applied*).
-- **Comparable Sessions**: same side, body scale within 10%, similar position in the image, same time of day band. Otherwise flagged, never hidden.
+- **Comparable Sessions**: the camera saw the person from a similar angle (yaw within 15°) and the same time of day band. Distance, position in the image and the phone's tilt don't matter (see *Phone placement*). Otherwise flagged, never hidden.
 - **Plateau**: three inconclusive in a row, or nothing left in the library that a Finding justifies.
 - Interventions come only from `docs/intervention-library.md`.
 
 ## Known limits
 
 - One phone camera, no depth: angles are approximate (a few degrees), widths are not measured.
+- The tilt correction assumes the phone's front camera delivers unmirrored frames in portrait (true for Safari on iPhone).
 - MediaPipe can take an object near the feet for an ankle.
 - Lower legs are often hidden by the desk.
 - The phone page is tested with Safari on iPhone. Android Chrome should work but is untested.

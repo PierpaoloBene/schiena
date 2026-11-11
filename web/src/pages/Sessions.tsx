@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import { nearest, Timeline } from "../components/Charts";
 import { PostureScene } from "../components/Scene";
-import { api, clock, fmt, METRIC_INFO, MetricKey, Sample, SessionMeta, sessionTitle, toSagittal, Workstation } from "../lib";
+import { api, clock, fmt, METRIC_INFO, MetricKey, originFromSamples, originOf, Sample, SessionMeta, sessionTitle, toSagittal, Workstation } from "../lib";
 import { Link, navigate } from "../router";
 
 const KEY_METRICS: MetricKey[] = ["neck", "head_offset", "upper_back", "lower_back", "trunk"];
@@ -144,8 +144,8 @@ export function SessionDetail({ id }: { id: string }) {
     }
     return nearest(valid, cursor);
   }, [samples, cursor, meta]);
-  const sameWs = workstation?.session_id && meta?.summary?.placement ? workstation : null;
-  const pose = current ? toSagittal(current, sameWs?.anchor) : null;
+  const origin = useMemo(() => (current ? originOf(meta?.summary, current) ?? originFromSamples(samples) : null), [current, meta, samples]);
+  const pose = current ? toSagittal(current, origin) : null;
   const frame = useMemo(() => {
     if (!meta?.frames?.length) return null;
     const t = current?.t ?? 0;
@@ -180,7 +180,7 @@ export function SessionDetail({ id }: { id: string }) {
             <span className="badge">{cursor == null ? "typical posture" : clock(current?.t ?? 0)}</span>
             <button className="btn ghost small" onClick={() => setPlaying(!playing)}>{playing ? "Pause" : "Replay ×10"}</button>
           </div>
-          <PostureScene pose={pose} workstation={sameWs} height="100%" />
+          <PostureScene pose={pose} workstation={workstation} height="100%" />
         </section>
         <section className="card frame-card">
           {frame ? <img src={`/api/sessions/${id}/frames/${frame}`} alt="" onClick={() => setZoom(frame)} /> : <div className="muted">No frames</div>}

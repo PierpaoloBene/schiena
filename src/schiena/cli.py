@@ -322,10 +322,16 @@ def cmd_workstation(a) -> None:
     trunk_m = trunk_metres(storage.load_profile())
     if trunk_m and sample.get("trunk_len"):
         sample["mpp"] = trunk_m / sample["trunk_len"]  # calibrated scale beats the model's average body
-    ws = reconstruct(annotation, sample)
+    # Origin: the Session's usual seated hip, so any Session can place the desk around its own.
+    placement = (storage.load_session(sid).get("summary") or {}).get("placement") or {}
+    hip = ([placement["hip_x"] * sample["w"], placement["hip_y"] * sample["h"]]
+           if "hip_x" in placement else sample["hip"])
+    origin = {"hip": [round(hip[0], 1), round(hip[1], 1)], "mpp": sample["mpp"]}
+    ws = reconstruct(annotation, sample, origin)
     ws.update({"session_id": sid, "frame": name, "updated_at": datetime.now().isoformat(timespec="seconds"),
                "image_points": annotation.get("objects", {}), "side": sample["side"],
-               "anchor": {"hip": sample["hip"], "w": sample["w"], "h": sample["h"], "mpp": sample["mpp"], "fwd": sample["fwd"]}})
+               "anchor": {**origin, "w": sample["w"], "h": sample["h"], "fwd": sample["fwd"],
+                          "camera": sample.get("camera")}})
     storage.write_json(storage.workstation_path(), ws)
     _out(ws)
 

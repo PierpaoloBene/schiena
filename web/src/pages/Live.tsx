@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CameraFeed } from "../components/CameraFeed";
 import { Sparkline } from "../components/Charts";
 import { PostureScene } from "../components/Scene";
-import { api, clock, fmt, LIVE_METRICS, METRIC_INFO, MetricKey, Profile, Sample, SessionMeta, Status, toSagittal, Workstation } from "../lib";
+import { api, clock, fmt, LIVE_METRICS, METRIC_INFO, MetricKey, originFromSamples, Profile, Sample, SessionMeta, Status, toSagittal, Workstation } from "../lib";
 import { navigate } from "../router";
 
 function useLive() {
@@ -114,7 +114,9 @@ export function Live() {
     api<SessionMeta[]>("/api/sessions").then((s) => setUsual(s.find((x) => x.summary?.accepted) ?? s.find((x) => x.summary) ?? null)).catch(() => {});
   }, []);
 
-  const pose = useMemo(() => (sample ? toSagittal(sample, workstation?.anchor) : null), [sample, workstation]);
+  // The desk is placed around this Session's usual hip (works even if the phone was moved).
+  const origin = useMemo(() => originFromSamples(history), [history.length > 0 ? Math.floor(history.length / 30) : -1]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pose = useMemo(() => (sample ? toSagittal(sample, origin ?? workstation?.anchor) : null), [sample, workstation, origin]);
 
   if (!status) return <div className="page center muted">{connected ? "Loading…" : "Connecting to the Schiena server…"}</div>;
   if (!status.phone_connected && status.state !== "recording" && !finished) return <Onboarding cameraUrl={status.camera_url} />;

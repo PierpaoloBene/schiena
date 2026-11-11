@@ -62,6 +62,23 @@ def test_session_starts_when_framed_and_is_saved(client):
     assert r.json() == {"neck": 3}
 
 
+
+def test_phone_tilt_is_recorded_and_undone(client):
+    """The phone sends its gravity: a phone leaning 5° makes the image lean, the server levels it."""
+    from .test_camera import gravity_for
+
+    c, live = client
+    header = {"x-gravity": ",".join(f"{v:.4f}" for v in gravity_for(roll=5.0))}
+    for _ in range(4):
+        c.post("/api/camera/frame", content=jpeg(), headers=header)
+        time.sleep(0.06)
+    sid = c.get("/api/status").json()["session_id"]
+    c.post("/api/session/stop")
+    s = c.get(f"/api/sessions/{sid}/samples").json()[0]
+    assert s["camera"] == {"roll": pytest.approx(5.0, abs=0.01), "pitch": pytest.approx(0.0, abs=0.01)}
+    # the fake engine always returns the same image points, so levelling them changes the angle
+    assert abs(s["metrics"]["trunk"] - 5.6) > 3
+
 def test_lan_listener_only_exposes_the_camera():
     # The port check happens in middleware: requests on the LAN port can't read data.
     live = srv.Live(FakeEstimator())

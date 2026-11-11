@@ -28,7 +28,12 @@ export interface Sample {
   kp?: [number, number, number][];
   back?: [number, number][];
   mpp?: number | null;
+  camera?: CameraTilt | null;
+  yaw?: number | null;
 }
+
+/** The phone's tilt when the frame was taken (degrees). */
+export interface CameraTilt { roll: number; pitch: number }
 
 export interface Status {
   state: "idle" | "framing" | "recording" | "finished";
@@ -64,7 +69,7 @@ export interface Summary {
   interruptions?: { start_s: number; end_s: number }[];
   interrupted_s?: number;
   longest_still_s: number;
-  placement: { side: string; body_scale: number; hip_x: number; hip_y: number } | null;
+  placement: { side: string; body_scale: number; hip_x: number; hip_y: number; mpp?: number; yaw?: number; roll?: number; pitch?: number } | null;
   metrics: Record<MetricKey, MetricStats>;
 }
 
@@ -100,8 +105,13 @@ export interface Workstation {
   anchor?: Anchor;
 }
 
-/** Image reference of the Workstation: lets the body move relative to the desk. */
-export interface Anchor { hip: [number, number]; w: number; h: number; mpp: number; fwd: 1 | -1 }
+/** Where body coordinates start: a Session's usual seated hip (pixels of its frames) and its scale.
+ * The desk is stored relative to it, so each Session — even with the phone moved — places the
+ * desk around its own usual hip. */
+export interface Origin { hip: [number, number]; mpp: number }
+
+/** The Workstation's origin, from the Session it was reconstructed on. */
+export interface Anchor extends Origin { w: number; h: number; fwd: 1 | -1; camera?: CameraTilt | null }
 
 export interface MetricMove {
   metric: string;
@@ -188,13 +198,64 @@ export interface SagittalPoint { x: number; y: number; visible: boolean }
 export type Sagittal = Record<Joint, SagittalPoint> & { back: [number, number][] };
 
 /** Sample → body-relative sagittal coordinates (metres; origin hip, x forward, y up). */
-export function toSagittal(s: Sample, anchor?: Anchor | null): Sagittal | null {
+const FOCAL_FRACTION = 0.72; // as in schiena/camera.py
+
+/** Pixel → pixel map onto a level camera (same maths as schiena/camera.py). */
+export function leveller(s: { w: number; h: number; camera?: CameraTilt | null }): (x: number, y: number) => [number, number] {
+  if (!s.camera) return (x, y) => [x, y];
+  const r = (s.camera.roll * Math.PI) / 180;
+  const p = (s.camera.pitch * Math.PI) / 180;
+  const a = [Math.sin(r) * Math.cos(p), -Math.cos(r) * Math.cos(p), Math.sin(p)];
+  const v = [a[2], 0, -a[0]]; // a × (0, −1, 0)
+  const sn = Math.hypot(...v);
+  const c = -a[1];
+  let R = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  if (sn > 1e-9) {
+    const vx = [[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]];
+    const k = (1 - c) / (sn * sn);
+    R = R.map((row, i) => row.map((e, j) => e + vx[i][j] + k * vx[i].reduce((acc, _, m) => acc + vx[i][m] * vx[m][j], 0)));
+  }
+  const f = FOCAL_FRACTION * Math.max(s.w, s.h);
+  const cx = s.w / 2;
+  const cy = s.h / 2;
+  return (x, y) => {
+    const X = [(x - cx) / f, (y - cy) / f, 1];
+    const Y = R.map((row) => row[0] * X[0] + row[1] * X[1] + row[2] * X[2]);
+    return [cx + (f * Y[0]) / Y[2], cy + (f * Y[1]) / Y[2]];
+  };
+}
+
+const median = (v: number[]) => {
+  const a = [...v].sort((x, y) => x - y);
+  return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : NaN;
+};
+
+/** Origin of a finished Session, from its summary. */
+export function originOf(summary: Summary | null | undefined, sample: Sample): Origin | null {
+  const pl = summary?.placement;
+  const mpp = pl?.mpp ?? sample.mpp;
+  return pl && mpp ? { hip: [pl.hip_x * sample.w, pl.hip_y * sample.h], mpp } : null;
+}
+
+/** Origin from Samples (a Session still recording). */
+export function originFromSamples(samples: Sample[]): Origin | null {
+  const v = samples.filter((s) => s.valid && s.hip && s.mpp);
+  if (v.length < 5) return null;
+  return { hip: [median(v.map((s) => s.hip![0])), median(v.map((s) => s.hip![1]))], mpp: median(v.map((s) => s.mpp!)) };
+}
+
+/** A Sample in body coordinates (metres, x forward, y up), levelled with the phone's tilt.
+ * origin: the Session's usual hip (see Origin); default: this Sample's own hip. */
+export function toSagittal(s: Sample, origin?: Origin | null): Sagittal | null {
   if (!s.person || !s.kp || !s.hip || !s.side || !s.trunk_len) return null;
-  const sameCamera = anchor && anchor.w === s.w && anchor.h === s.h && anchor.fwd === s.fwd;
-  const mpp = sameCamera ? anchor.mpp : s.mpp ?? 0.5 / s.trunk_len;
+  const lev = leveller(s);
+  const mpp = origin?.mpp ?? s.mpp ?? 0.5 / s.trunk_len;
   const fwd = s.fwd ?? 1;
-  const [hx, hy] = sameCamera ? anchor.hip : s.hip;
-  const conv = (x: number, y: number): [number, number] => [fwd * (x * s.w - hx) * mpp, -(y * s.h - hy) * mpp];
+  const [hx, hy] = lev(...(origin?.hip ?? s.hip));
+  const conv = (xn: number, yn: number): [number, number] => {
+    const [x, y] = lev(xn * s.w, yn * s.h);
+    return [fwd * (x - hx) * mpp, -(y - hy) * mpp];
+  };
   const out: Partial<Sagittal> = {};
   for (const j of ["ear", "shoulder", "elbow", "wrist", "hip", "knee", "ankle", "heel", "toe"] as Joint[]) {
     const [x, y, v] = s.kp[KP[j][s.side]];

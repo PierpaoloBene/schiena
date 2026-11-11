@@ -6,7 +6,7 @@ A posture tool: a phone films the user from the side while they work at a desk, 
 
 - **Not set up yet, or "start it" / "set it up"** → follow the `setup` skill. Do the work yourself; the user should only scan a QR code with their phone.
 - **"How did I sit?", a report** → `report` skill.
-- **First Session done, desk changed, phone moved, "calibrate"** → `calibrate` skill.
+- **First Session done, desk or chair changed, "calibrate"** → `calibrate` skill. Moving the phone doesn't need it.
 - **"What should I do next?", "did it work?"** → `coach` skill.
 - The server is `uv run schiena` (dashboard at http://127.0.0.1:4700). Run it in the background; it must stay running while the user records.
 - All data is in `data/` (see `docs/design.md`). Use the `schiena` CLI (`uv run schiena --help`) rather than editing JSON files by hand.

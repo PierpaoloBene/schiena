@@ -1,6 +1,6 @@
 ---
 name: calibrate
-description: Calibrate Schiena for this user and desk — check the personal profile (height, relaxed standing photos) and reconstruct the Workstation (monitor, laptop, keyboard, desk, chair) in 3D from a Session frame. Use after the first Session, after a physical Intervention or a phone move, or when the user asks to calibrate, set up the workstation, or rebuild the 3D desk.
+description: Calibrate Schiena for this user and desk — check the personal profile (height, relaxed standing photos) and reconstruct the Workstation (monitor, laptop, keyboard, desk, chair) in 3D from a Session frame. Use after the first Session, after a physical Intervention (desk, chair, screen moved), or when the user asks to calibrate, set up the workstation, or rebuild the 3D desk.
 argument-hint: "[session-id]"
 ---
 

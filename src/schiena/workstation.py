@@ -10,36 +10,51 @@ from __future__ import annotations
 
 import math
 
+from . import camera
 from .posture import EAR, ELBOW, SHOULDER
 
 
-def to_body(point: list[float], sample: dict) -> list[float]:
-    x = point[0] * sample["w"]
-    y = point[1] * sample["h"]
-    hx, hy = sample["hip"]
-    mpp = sample["mpp"]
+def _leveller(sample: dict):
+    cam = camera.from_dict(sample.get("camera"))
+    if cam is None:
+        return lambda x, y: (x, y)
+    H = camera.homography(cam, sample["w"], sample["h"])
+    return lambda x, y: camera.apply(H, [(x, y)])[0]
+
+
+def to_body(point: list[float], sample: dict, origin: dict | None = None) -> list[float]:
+    """Normalised frame point → metres from the origin (the Session's usual seated hip), levelled
+    with the phone's tilt when the Sample has it."""
+    lev = _leveller(sample)
+    x, y = lev(point[0] * sample["w"], point[1] * sample["h"])
+    hx, hy = lev(*(origin or {"hip": sample["hip"]})["hip"])
+    mpp = (origin or sample)["mpp"]
     return [round(sample["fwd"] * (x - hx) * mpp, 3), round(-(y - hy) * mpp, 3)]
 
 
-def keypoint(sample: dict, index: int) -> list[float] | None:
+def keypoint(sample: dict, index: int, origin: dict | None = None) -> list[float] | None:
     kp = sample["kp"][index]
-    return to_body(kp[:2], sample) if kp[2] >= 0.5 else None
+    return to_body(kp[:2], sample, origin) if kp[2] >= 0.5 else None
 
 
-def reconstruct(annotation: dict, sample: dict) -> dict:
-    """annotation: {"objects": {name: {point_name: [x, y], ...}}, "notes": "..."}."""
+def reconstruct(annotation: dict, sample: dict, origin: dict | None = None) -> dict:
+    """annotation: {"objects": {name: {point_name: [x, y], ...}}, "notes": "..."}.
+
+    origin: {"hip": [x, y] pixels, "mpp": metres per pixel}, the Session's usual seated hip.
+    Positions are relative to it, so another Session (even with the phone moved) can place the
+    desk around the body using its own usual hip. Default: the hip in this frame."""
     if not sample.get("valid") or not sample.get("mpp"):
         raise ValueError("the reference frame needs a valid Sample with a known scale")
     objects = {
-        name: {pn: to_body(p, sample) for pn, p in pts.items()}
+        name: {pn: to_body(p, sample, origin) for pn, p in pts.items()}
         for name, pts in annotation.get("objects", {}).items()
     }
     side = sample["side"]
     body = {
-        "ear": keypoint(sample, EAR[side]),
-        "shoulder": keypoint(sample, SHOULDER[side]),
-        "elbow": keypoint(sample, ELBOW[side]),
-        "hip": [0.0, 0.0],
+        "ear": keypoint(sample, EAR[side], origin),
+        "shoulder": keypoint(sample, SHOULDER[side], origin),
+        "elbow": keypoint(sample, ELBOW[side], origin),
+        "hip": to_body([sample["hip"][0] / sample["w"], sample["hip"][1] / sample["h"]], sample, origin),
     }
     return {
         "objects": objects,

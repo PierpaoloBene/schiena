@@ -46,8 +46,8 @@ Leave it running while you record. Stop it with Ctrl+C.
 
 1. Scan the QR code on the dashboard with your phone.
 2. The phone's browser warns that the connection is not private. That's expected: the page is served by your own computer with a certificate it made itself. On iPhone tap **Show Details → visit this website**. You only do this once.
-3. Tap **Start camera** and allow access to the camera.
-4. Put the phone **beside you**, upright, at chest height, 1.5–2 m away, so it sees you exactly in profile. A small tripod or a stack of books works. Plugging the phone into a charger is a good idea.
+3. Tap **Start camera** and allow access to the camera and to motion (the phone's tilt sensor, used to correct a phone that isn't perfectly upright).
+4. Put the phone **beside you**, roughly upright, around chest height, 1.5–2 m away, so it sees you from the side. A small tripod or a stack of books works. It doesn't have to be in the same spot every time: distance and position don't change the angles, and the tilt is corrected. Plugging the phone into a charger is a good idea.
 5. Sit down and work. The phone tells you if the framing is wrong; when it's right, recording starts by itself and stops after 30 minutes. Keep the browser page open; the phone screen goes black to save battery.
 
 You can stand up and leave during a session: time away from the desk is detected and left out. If the phone gets a call, the Wi-Fi drops or the page reloads, recording picks up where it stopped.
@@ -57,7 +57,7 @@ You can stand up and leave during a session: time away from the desk is detected
 1. On the dashboard, open the session and rate any discomfort you felt (0–10 for neck, shoulders, back, wrists, legs).
 2. In Claude Code:
    - `/report` writes a report of the latest session. You can read it on the session's page.
-   - `/calibrate` rebuilds your desk in 3D from the session (monitor, keyboard, chair) and measures things like the height of the monitor relative to your eyes. Run it after your first session, and again if you change your desk or move the phone.
+   - `/calibrate` rebuilds your desk in 3D from the session (monitor, keyboard, chair) and measures things like the height of the monitor relative to your eyes. Run it after your first session, and again if you change your desk or chair.
    - `/coach` tells you what to do next.
 
 You can also just ask in your own words ("how did I sit today?", "what should I change?").
@@ -79,7 +79,7 @@ With the standing photo, Schiena can tell you how your sitting posture differs f
 3. Make the change and record another session.
 4. The change counts as successful if a related measurement moved by more than your normal variation and your discomfort didn't get worse. If it didn't help, you undo it and try something else.
 
-Keep the phone in the same place and record at a similar time of day, so sessions can be compared. The **Progress** page shows every change you tried and its result.
+Record at a similar time of day and film yourself from roughly the same side angle, so sessions can be compared; the phone doesn't need to be in exactly the same place. The **Progress** page shows every change you tried and its result.
 
 ## What is measured
 

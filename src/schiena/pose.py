@@ -10,6 +10,8 @@ from typing import Protocol
 
 import numpy as np
 
+from . import camera
+from .camera import CameraPose
 from .posture import HIP, SHOULDER, Landmark, Measurement, measure
 
 MODEL_URLS = {
@@ -83,23 +85,52 @@ def metres_per_pixel(m: Measurement, world: list[tuple] | None) -> float | None:
     return math.dist(sh, hp) / m.trunk_length
 
 
-def make_sample(t: float, result: PoseResult, w: int, h: int, trunk_m: float | None = None) -> dict:
-    """trunk_m: the user's calibrated shoulder→hip length in metres (better than the model's average body)."""
-    m = measure(result.landmarks, result.mask)
+def level(result: PoseResult, w: int, h: int, cam: CameraPose | None):
+    """Landmarks and mask as a level camera would see them, and the map back to the frame."""
+    if cam is None or not result.landmarks:
+        return result.landmarks, result.mask, None
+    import cv2
+
+    H = camera.homography(cam, w, h)
+    pts = camera.apply(H, [(l.x, l.y) for l in result.landmarks])
+    lms = [Landmark(x, y, l.visibility) for (x, y), l in zip(pts, result.landmarks)]
+    mask = None
+    if result.mask is not None:
+        mask = cv2.warpPerspective(result.mask.astype(np.float32), H, (result.mask.shape[1], result.mask.shape[0]),
+                                   flags=cv2.INTER_LINEAR, borderValue=0)
+    return lms, mask, np.linalg.inv(H)
+
+
+def make_sample(t: float, result: PoseResult, w: int, h: int, trunk_m: float | None = None,
+                cam: CameraPose | None = None) -> dict:
+    """trunk_m: the user's calibrated shoulder→hip length in metres (better than the model's average body).
+    cam: the phone's orientation; angles are measured as if the phone were level.
+
+    Stored coordinates (kp, back, hip) are in the original frame, so they can be drawn on it;
+    "camera" says how to level them."""
+    lms, mask, back_to_frame = level(result, w, h, cam)
+    m = measure(lms, mask)
     sample: dict = {"t": round(t, 3), "person": m.person, "valid": m.valid, "w": w, "h": h}
     if not m.person:
         return sample
+    contour = camera.apply(back_to_frame, m.back_contour) if back_to_frame is not None else m.back_contour
+    hip = (result.landmarks[HIP[m.side]].x, result.landmarks[HIP[m.side]].y) if m.hip else None
     sample.update({
         "side": m.side,
         "fwd": m.forward,
         "trunk_len": round(m.trunk_length, 2) if m.trunk_length else None,
-        "hip": [round(m.hip[0], 1), round(m.hip[1], 1)] if m.hip else None,
+        "hip": [round(hip[0], 1), round(hip[1], 1)] if hip else None,
         "metrics": {k: (round(v, 3) if v is not None and not math.isnan(v) else None) for k, v in m.metrics.items()},
         "kp": [[round(l.x / w, 4), round(l.y / h, 4), round(l.visibility, 2)] for l in result.landmarks],
-        "back": [[round(x / w, 4), round(y / h, 4)] for x, y in m.back_contour],
+        "back": [[round(x / w, 4), round(y / h, 4)] for x, y in contour],
         "mpp": (trunk_m / m.trunk_length) if (trunk_m and m.trunk_length) else metres_per_pixel(m, result.world),
         "scale": "calibrated" if (trunk_m and m.trunk_length) else "model",
     })
+    if cam is not None:
+        sample["camera"] = cam.as_dict()
+    yaw = camera.yaw_from_world(result.world)
+    if yaw is not None:
+        sample["yaw"] = round(yaw, 1)
     if sample["mpp"]:
         sample["mpp"] = round(sample["mpp"], 6)
     return sample

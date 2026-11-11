@@ -17,7 +17,7 @@ description: Run the Schiena improvement cycle — decide the next step (another
 
 Use only accepted Sessions (≥ 20 min present, ≥ 80% valid) with a discomfort rating; if a rating is missing, ask the user to fill it on the dashboard first.
 
-- **Fewer than 2 comparable Baselines** → ask for another Session in the same conditions (same phone spot, similar time of day, ordinary work). Label Sessions: `uv run schiena label <id> "baseline 1"`.
+- **Fewer than 2 comparable Baselines** → ask for another Session in similar conditions (similar time of day, ordinary work, phone beside them; it doesn't have to be the same spot). Label Sessions: `uv run schiena label <id> "baseline 1"`.
 - **2 or more Baselines, no Intervention in progress** (more is better: every Baseline counts towards the user's normal variability) → suggest **one** Intervention:
   - pick the Finding with the most evidence (numbers + frames + discomfort) and the library entry that addresses it;
   - prefer free and behavioural entries before physical ones, and never suggest purchases before a Plateau;

@@ -24,7 +24,8 @@ from . import storage
 from .calibration import analyse_front, analyse_side, trunk_metres, versus_neutral
 from .findings import findings
 from .history import plateau
-from .pose import PoseEstimator, make_sample
+from .camera import CameraPose, from_gravity, parse_gravity
+from .pose import PoseEstimator, level, make_sample
 from .session import (
     ABSENCE_MIN_S,
     SESSION_S,
@@ -122,7 +123,8 @@ class Live:
             self.clock_offset = delay
         return phone + self.clock_offset
 
-    async def on_frame(self, jpeg: bytes, captured_at_ms: float | None = None, backlog: int = 0) -> dict:
+    async def on_frame(self, jpeg: bytes, captured_at_ms: float | None = None, backlog: int = 0,
+                       cam: CameraPose | None = None) -> dict:
         async with self.lock:  # frames are handled one at a time, in arrival order
             now = self.clock()
             self.last_frame_at = now
@@ -137,22 +139,22 @@ class Live:
             if self.state in ("framing", "recording") and cap - self.last_analysed_capture >= ANALYSIS_INTERVAL_S * 0.95:
                 if not (self.state == "framing" and late):
                     self.last_analysed_capture = cap
-                    sample = await asyncio.to_thread(self._estimate, jpeg, cap)
+                    sample = await asyncio.to_thread(self._estimate, jpeg, cap, cam)
                     if sample is not None:
                         await self._handle_sample(sample, jpeg, cap, live=not late)
             await self.check_end()
             return self.status()
 
-    def _estimate(self, jpeg: bytes, cap: float) -> dict | None:
+    def _estimate(self, jpeg: bytes, cap: float, cam: CameraPose | None = None) -> dict | None:
         bgr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
         if bgr is None:
             return None
         h, w = bgr.shape[:2]
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         result = self.estimator.estimate(rgb, int(cap * 1000))
-        return make_sample(0.0, result, w, h, self.trunk_m)
+        return make_sample(0.0, result, w, h, self.trunk_m, cam)
 
-    async def calibrate(self, view: str, jpeg: bytes) -> dict:
+    async def calibrate(self, view: str, jpeg: bytes, cam: CameraPose | None = None) -> dict:
         """Analyse a relaxed standing photo (side or front) and store it in the profile."""
         bgr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
         if bgr is None:
@@ -161,7 +163,10 @@ class Live:
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         async with self.lock:
             result = await asyncio.to_thread(self.estimator.estimate, rgb, int(self.clock() * 1000) + 1)
-        r = analyse_side(result.landmarks, result.mask, w, h) if view == "side" else analyse_front(result.landmarks, w, h)
+        lms, mask, _ = level(result, w, h, cam)
+        r = analyse_side(lms, mask, w, h) if view == "side" else analyse_front(lms, w, h)
+        if cam is not None:
+            r["camera"] = cam.as_dict()
         if r["ok"]:
             d = storage.data_dir() / "photos"
             d.mkdir(parents=True, exist_ok=True)
@@ -332,7 +337,8 @@ def create_app(live: Live, web_dist: Path, lan_url: str, lan_port: int) -> FastA
             raise HTTPException(400, "expected a JPEG body")
         captured = request.headers.get("x-captured-at")
         backlog = int(request.headers.get("x-backlog", "0") or 0)
-        return await live.on_frame(body, float(captured) if captured else None, backlog)
+        cam = from_gravity(parse_gravity(request.headers.get("x-gravity")))
+        return await live.on_frame(body, float(captured) if captured else None, backlog, cam)
 
     @app.get("/api/camera/status")
     async def camera_status():
@@ -343,7 +349,7 @@ def create_app(live: Live, web_dist: Path, lan_url: str, lan_port: int) -> FastA
         if view not in ("side", "front"):
             raise HTTPException(404)
         body = await request.body()
-        r = await live.calibrate(view, body)
+        r = await live.calibrate(view, body, from_gravity(parse_gravity(request.headers.get("x-gravity"))))
         return {k: v for k, v in r.items() if k not in ("kp", "back")}
 
     @app.post("/api/camera/height")

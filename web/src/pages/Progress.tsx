@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { RangeBars } from "../components/Charts";
 import { PostureScene } from "../components/Scene";
-import { api, fmt, Intervention, METRIC_INFO, MetricKey, Sample, SessionMeta, sessionTitle, toSagittal, Workstation } from "../lib";
+import { api, fmt, Intervention, METRIC_INFO, MetricKey, originOf, Sample, SessionMeta, sessionTitle, toSagittal, Workstation } from "../lib";
 import { Link } from "../router";
 
 const OUTCOME_TONE: Record<string, string> = {
@@ -126,11 +126,11 @@ function InterventionCard({ i, byId }: { i: Intervention; byId: Record<string, S
       <div className="before-after">
         <div>
           <span className="muted small">Before</span>
-          <PostureScene pose={poses.before ? toSagittal(poses.before, ws?.anchor) : null} workstation={ws} height={260} />
+          <PostureScene pose={poses.before ? toSagittal(poses.before, originOf(byId[i.baselines[0]]?.summary, poses.before)) : null} workstation={ws} height={260} />
         </div>
         <div>
           <span className="muted small">After</span>
-          <PostureScene pose={poses.after ? toSagittal(poses.after, ws?.anchor) : null} workstation={ws} height={260} />
+          <PostureScene pose={poses.after ? toSagittal(poses.after, i.reassessment ? originOf(byId[i.reassessment]?.summary, poses.after) : null) : null} workstation={ws} height={260} />
         </div>
       </div>
       <table className="moves">

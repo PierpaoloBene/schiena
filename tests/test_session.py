@@ -95,8 +95,13 @@ def summ(trunk=8.0, head=0.2, scale=0.23, band_hour=10):
 
 def test_comparability():
     assert comparability(summ(), summ()) == []
-    assert "phone distance" in comparability(summ(), summ(scale=0.30))[0]
+    assert comparability(summ(), summ(scale=0.30)) == []  # the phone moved closer: angles don't change
     assert "time of day" in comparability(summ(), summ(band_hour=15))[0]
+    a, b = summ(), summ()
+    a["placement"]["yaw"], b["placement"]["yaw"] = 5.0, 12.0
+    assert comparability(a, b) == []
+    b["placement"]["yaw"] = 28.0
+    assert "different angle" in comparability(a, b)[0]
 
 
 def test_outcome_successful():

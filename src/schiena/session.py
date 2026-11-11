@@ -17,6 +17,7 @@ import statistics
 from dataclasses import dataclass
 from datetime import datetime
 
+from .camera import MAX_YAW_DEG
 from .posture import METRICS, SHOULDER, VISIBLE
 
 ABSENCE_MIN_S = 5.0
@@ -53,11 +54,15 @@ def check_framing(s: dict) -> FramingCheck:
         elif scale > SCALE_RANGE[1]:
             problems.append("You look too big — move the phone farther away.")
         kp = s.get("kp") or []
-        if kp:
+        if s.get("yaw") is not None:
+            side_on = abs(s["yaw"]) <= MAX_YAW_DEG
+        elif kp:
             ls, rs = kp[SHOULDER["left"]], kp[SHOULDER["right"]]
-            spread = abs(ls[0] - rs[0]) * s["w"] / s["trunk_len"]
-            if spread > 0.35:
-                problems.append("Turn the phone so it sees you exactly from the side.")
+            side_on = abs(ls[0] - rs[0]) * s["w"] / s["trunk_len"] <= 0.35
+        else:
+            side_on = True
+        if not side_on:
+            problems.append("Turn the phone so it sees you from the side.")
             ys = [p[1] for p in kp if p[2] >= VISIBLE]
             if ys and min(ys) < 0.02:
                 problems.append("Your head is cut off — tilt or lower the phone.")
@@ -283,6 +288,17 @@ def summarize(samples: list[dict], started_at: str, duration_s: float | None = N
             "hip_x": round(statistics.median(s["hip"][0] / s["w"] for s in valid), 4),
             "hip_y": round(statistics.median(s["hip"][1] / s["h"] for s in valid), 4),
         }
+        mpps = [s["mpp"] for s in valid if s.get("mpp")]
+        yaws = [s["yaw"] for s in valid if s.get("yaw") is not None]
+        cams = [s["camera"] for s in valid if s.get("camera")]
+        if mpps:
+            placement["mpp"] = round(statistics.median(mpps), 6)
+        if yaws:
+            placement["yaw"] = round(statistics.median(yaws), 1)
+        if cams:
+            placement["roll"] = round(statistics.median(c["roll"] for c in cams), 1)
+            placement["pitch"] = round(statistics.median(c["pitch"] for c in cams), 1)
+            placement["tilt_corrected_percent"] = round(100 * len(cams) / len(valid), 1)
     return {
         "started_at": started_at,
         "time_band": time_band(started_at),
@@ -302,18 +318,22 @@ def summarize(samples: list[dict], started_at: str, duration_s: float | None = N
 # ---------------------------------------------------------------- comparability
 
 
+YAW_TOLERANCE_DEG = 15.0
+
+
 def comparability(a: dict, b: dict) -> list[str]:
-    """Reasons why two Session summaries are *not* fully comparable (empty = comparable)."""
+    """Reasons why two Session summaries are *not* fully comparable (empty = comparable).
+
+    The phone may be moved between Sessions: distance and position in the image don't change
+    angles, and its tilt is corrected when the phone sends its gravity. What still matters is
+    the angle from which it sees the person (yaw) and the time of day.
+    """
     reasons = []
     pa, pb = a.get("placement"), b.get("placement")
     if not pa or not pb:
         return ["placement unknown"]
-    if pa["side"] != pb["side"]:
-        reasons.append("filmed from different sides")
-    if abs(pa["body_scale"] / pb["body_scale"] - 1) > 0.10:
-        reasons.append("phone distance changed (body scale differs by more than 10%)")
-    if abs(pa["hip_x"] - pb["hip_x"]) > 0.08 or abs(pa["hip_y"] - pb["hip_y"]) > 0.08:
-        reasons.append("framing changed (body position in the image moved)")
+    if pa.get("yaw") is not None and pb.get("yaw") is not None and abs(pa["yaw"] - pb["yaw"]) > YAW_TOLERANCE_DEG:
+        reasons.append(f"the phone saw you from a different angle ({pa['yaw']:+.0f}° vs {pb['yaw']:+.0f}° from a pure side view)")
     if a.get("time_band") != b.get("time_band"):
         reasons.append(f"different time of day ({a.get('time_band')} vs {b.get('time_band')})")
     return reasons

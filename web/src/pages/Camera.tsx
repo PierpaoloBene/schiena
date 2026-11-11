@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clock, Status } from "../lib";
 import { Calibrate } from "./Calibrate";
+import { gravity, startGravity } from "../gravity";
 
 const CAPTURE_INTERVAL_MS = 500;
 const LIVE_MAX_SIDE = 1280;
@@ -15,7 +16,7 @@ const BACKLOG_MAX_SIDE = 800; // frames kept while offline are smaller
 const BACKLOG_MAX = 900; // ≈ 15 min at 1 frame/s, ~30 MB
 
 type Phase = "start" | "live" | "error" | "calibrate";
-interface Frame { blob: Blob; at: number }
+interface Frame { blob: Blob; at: number; g: string | null }
 
 export function Camera() {
   const video = useRef<HTMLVideoElement>(null);
@@ -53,8 +54,10 @@ export function Camera() {
   }
 
   async function start() {
+    const motion = startGravity(); // must start inside the tap, before any await
     try {
       await openCamera();
+      await motion;
       setPhase("live");
     } catch (e) {
       setError(
@@ -124,7 +127,7 @@ export function Camera() {
       canvas.getContext("2d")!.drawImage(v, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", backlog ? 0.6 : 0.72));
       if (!blob) return;
-      queue.current.push({ blob, at: now });
+      queue.current.push({ blob, at: now, g: gravity() });
       lastQueued = now;
       if (queue.current.length > BACKLOG_MAX) queue.current.shift();
       setQueued(queue.current.length);
@@ -147,7 +150,12 @@ export function Camera() {
           const r = await fetch("/api/camera/frame", {
             method: "POST",
             body: f.blob,
-            headers: { "content-type": "image/jpeg", "x-captured-at": String(f.at), "x-backlog": String(queue.current.length - 1) },
+            headers: {
+              "content-type": "image/jpeg",
+              "x-captured-at": String(f.at),
+              "x-backlog": String(queue.current.length - 1),
+              ...(f.g ? { "x-gravity": f.g } : {}),
+            },
           });
           if (!r.ok) throw new Error(String(r.status));
           setStatus(await r.json());
