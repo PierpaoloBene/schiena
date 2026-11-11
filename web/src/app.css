@@ -281,3 +281,18 @@ code { background: var(--panel-2); border: 1px solid var(--line); padding: 2px 7
 .you-grid .slider-row { grid-template-columns: 140px 90px auto; margin-bottom: 8px; }
 @media (max-width: 1000px) { .you-grid { grid-template-columns: 1fr; } }
 .calib-title { margin: 6px 0 -6px; }
+
+/* ---------- exposure bands (ISO 11226) */
+.exposure { display: grid; gap: 12px; }
+.exposure-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 12px; align-items: center; }
+.exposure-label { font-weight: 600; }
+.exposure-track { display: flex; height: 22px; border-radius: 8px; overflow: hidden; background: var(--panel-2); }
+.exposure-part { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #0b1020; min-width: 0; }
+.exposure-part.below { background: #5eead4; }
+.exposure-part.between { background: #fbbf24; }
+.exposure-part.above { background: #f87171; }
+.exposure-legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 4px; }
+.exposure-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+@media (max-width: 640px) {
+  .exposure-row { grid-template-columns: 1fr; gap: 4px; }
+}

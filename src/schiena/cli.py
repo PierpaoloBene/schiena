@@ -204,9 +204,9 @@ def cmd_summary(a) -> None:
 
     sid = _resolve(a.session)
     meta = storage.load_session(sid)
-    summ = meta.get("summary")
-    if not summ:
+    if not meta.get("summary"):
         sys.exit("This Session has no summary (still recording?).")
+    summ = _current_summary(meta)
     from .calibration import versus_neutral
 
     others = [s for s in storage.list_sessions() if s["id"] != sid and s.get("summary")]

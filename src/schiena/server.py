@@ -296,6 +296,26 @@ def recover_sessions(session_s: float = SESSION_S) -> list[str]:
     return recovered
 
 
+def refresh_summaries() -> list[str]:
+    """Recompute stored summaries written by an older version of summarize()."""
+    from .session import SUMMARY_VERSION
+
+    refreshed = []
+    for meta in storage.list_sessions():
+        summ = meta.get("summary")
+        if meta.get("status") != "finished" or not summ or summ.get("version", 1) >= SUMMARY_VERSION:
+            continue
+        samples = storage.read_samples(meta["id"])
+        if not samples:
+            continue
+        path = storage.session_dir(meta["id"]) / "session.json"
+        raw = storage.read_json(path)
+        raw["summary"] = summarize(samples, raw["started_at"], raw.get("duration_s"))
+        storage.write_json(path, raw)
+        refreshed.append(meta["id"])
+    return refreshed
+
+
 # ---------------------------------------------------------------- app
 
 
@@ -309,6 +329,9 @@ def create_app(live: Live, web_dist: Path, lan_url: str, lan_port: int) -> FastA
     async def lifespan(app):
         for sid in recover_sessions(live.session_s):
             print(f"Recovered interrupted Session {sid}", flush=True)
+        refreshed = await asyncio.to_thread(refresh_summaries)
+        if refreshed:
+            print(f"Updated the summaries of {len(refreshed)} Session(s)", flush=True)
         task = asyncio.create_task(live.watchdog())
         yield
         task.cancel()

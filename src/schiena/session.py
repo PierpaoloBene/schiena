@@ -21,6 +21,7 @@ from .camera import MAX_YAW_DEG
 from .posture import METRICS, SHOULDER, VISIBLE
 
 ABSENCE_MIN_S = 5.0
+SUMMARY_VERSION = 2  # bump when summarize() gains fields; stored summaries are refreshed on start
 MAX_HOLE_S = 3.0  # a longer stretch without Samples is an interruption (no camera data)
 FRAMING_HOLD_S = 5.0
 SESSION_S = 30 * 60
@@ -239,6 +240,50 @@ def median_standard_error(samples: list[dict], key: str, min_minutes: int = 5) -
     return 1.2533 * statistics.stdev(medians) / math.sqrt(len(medians))
 
 
+# Static posture bands, from ISO 11226 ("Evaluation of static working postures"). Angles from the
+# vertical, positive forward. ISO: below the first limit is acceptable; between the two it depends
+# on how long the posture is held; above the second it isn't recommended. Our angles come from one
+# camera and are approximate, so these are a reference for how time is spent, not a verdict.
+EXPOSURE_BANDS = {
+    "neck": (25.0, 85.0),  # head inclination (ISO uses the C7–tragus line; shoulder→ear here)
+    "trunk": (20.0, 60.0),  # trunk inclination
+    "upper_arm": (20.0, 60.0),  # upper arm elevation
+}
+
+
+BRIEF_DIP_S = 5.0  # a moment below the limit doesn't end a held posture
+
+
+def exposure(samples: list[dict], key: str, bands: tuple[float, float]) -> dict | None:
+    """Share of measured time in each band, and the longest stretch held over the first limit
+    (ended by ≥ 5 s below it or by an interruption)."""
+    pts = [(s["t"], s["metrics"].get(key)) for s in samples if s.get("valid") and s["metrics"].get(key) is not None]
+    if len(pts) < 10:
+        return None
+    lo, hi = bands
+    counts = [0, 0, 0]
+    longest = 0.0
+    run_start = last_over = prev_t = None
+    for t, v in pts:
+        counts[0 if v < lo else 1 if v < hi else 2] += 1
+        if prev_t is not None and t - prev_t > MAX_HOLE_S:
+            run_start = None  # interruption: no data, so no claim that the posture was held
+        if v >= lo:
+            if run_start is None or last_over is None or t - last_over > BRIEF_DIP_S:
+                run_start = t
+            last_over = t
+            longest = max(longest, t - run_start + 1)  # samples are 1 s apart
+        prev_t = t
+    n = len(pts)
+    return {
+        "limits": [lo, hi],
+        "below_percent": round(100 * counts[0] / n, 1),
+        "between_percent": round(100 * counts[1] / n, 1),
+        "above_percent": round(100 * counts[2] / n, 1),
+        "longest_over_first_limit_s": round(longest, 1),
+    }
+
+
 def time_band(iso: str) -> str:
     h = datetime.fromisoformat(iso).hour
     return "morning" if h < 12 else "afternoon" if h < 18 else "evening"
@@ -275,6 +320,10 @@ def summarize(samples: list[dict], started_at: str, duration_s: float | None = N
         se = median_standard_error(valid, k)
         if se is not None:
             metrics[k]["median_se"] = round(se, 4)
+    for k, bands in EXPOSURE_BANDS.items():
+        e = exposure(valid, k, bands)
+        if e and "median" in metrics[k]:
+            metrics[k]["exposure"] = e
     for k in ("trunk", "neck"):
         if "median" in metrics[k]:
             mv = minute_variability(valid, k)
@@ -300,6 +349,7 @@ def summarize(samples: list[dict], started_at: str, duration_s: float | None = N
             placement["pitch"] = round(statistics.median(c["pitch"] for c in cams), 1)
             placement["tilt_corrected_percent"] = round(100 * len(cams) / len(valid), 1)
     return {
+        "version": SUMMARY_VERSION,
         "started_at": started_at,
         "time_band": time_band(started_at),
         "duration_s": round(duration, 1),

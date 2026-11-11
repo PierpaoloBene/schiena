@@ -78,6 +78,8 @@ Side view at 90°, phone at chest height, 1.5–2 m away. Either side works; the
 | `upper_arm` | shoulder → elbow from vertical; positive = reaching forward |
 | `elbow`, `hip`, `knee` | interior angles, when visible |
 
+**Time in posture bands** (`exposure` in the summary, for `neck`, `trunk`, `upper_arm`): the share of measured time under, between and over the two limits of ISO 11226 for static postures (head inclination 25°/85°, trunk inclination 20°/60°, upper arm elevation 20°/60°), and the longest stretch held over the first limit (dips under 5 s don't end it, interruptions do). It is a reference for how long postures are held, not a verdict: our angles are approximate, and ISO also weighs support (a backrest) and holding time.
+
 Hidden joints (visibility < 0.5) give no value; nothing is estimated. MediaPipe has no spine landmarks, hence the silhouette. The model places the shoulder towards the back of the joint, so `trunk` reads more reclined than it is; this is why values are compared, not judged on their own.
 
 ## Sessions

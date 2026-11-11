@@ -56,6 +56,16 @@ export interface MetricStats {
   last_third_median?: number;
   visible_percent: number;
   minute_std?: number | null;
+  exposure?: Exposure;
+}
+
+/** Time spent in the ISO 11226 static posture bands (see session.py). */
+export interface Exposure {
+  limits: [number, number];
+  below_percent: number;
+  between_percent: number;
+  above_percent: number;
+  longest_over_first_limit_s: number;
 }
 
 export interface Summary {

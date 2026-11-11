@@ -1,8 +1,9 @@
 """Deterministic Findings from a Session summary: what was measured, with its justification.
 
 These are observations, not diagnoses. Thresholds are either about measurement
-quality or relative (drift within the Session); the only external references are
-OSHA's elbow range (90–120°), which is advisory.
+quality or relative (drift within the Session); the external references are
+OSHA's elbow range (90–120°) and the static posture bands of ISO 11226, both used as
+reference points for how time is spent, not as verdicts.
 """
 
 from __future__ import annotations
@@ -54,6 +55,17 @@ def findings(summary: dict) -> list[dict]:
             f"trunk and neck stayed within 5° for {still / 60:.0f} min in a row")
     if summary["presence_s"] >= 25 * 60 and not summary["absences"]:
         add("no_breaks", "no break away from the desk", "high", f"{summary['presence_s'] / 60:.0f} min seated without an Absence")
+
+    for k, what in (("neck", "head tilted forward"), ("trunk", "trunk leaning forward"), ("upper_arm", "arms raised forward")):
+        e = m.get(k, {}).get("exposure")
+        if not e:
+            continue
+        over = e["between_percent"] + e["above_percent"]
+        lo = e["limits"][0]
+        if over >= 50 or e["longest_over_first_limit_s"] >= 10 * 60:
+            add(f"{k}_sustained", f"{what} beyond {lo:.0f}° for much of the Session", "medium",
+                f"{over:.0f}% of measured time over {lo:.0f}° (ISO 11226 band), longest unbroken stretch "
+                f"{e['longest_over_first_limit_s'] / 60:.0f} min; angles are approximate")
 
     trunk = m.get("trunk", {})
     if trunk.get("minute_std") is not None and trunk["minute_std"] < 1.0:

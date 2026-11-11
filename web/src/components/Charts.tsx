@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { clock, fmt, METRIC_INFO, MetricKey, Sample } from "../lib";
+import { clock, fmt, METRIC_INFO, MetricKey, MetricStats, Sample } from "../lib";
 
 export function Sparkline({ values, color, width = 120, height = 34 }: { values: (number | null | undefined)[]; color: string; width?: number; height?: number }) {
   const pts = values.map((v, i) => [i, v] as const).filter((p): p is readonly [number, number] => p[1] != null);
@@ -161,6 +161,48 @@ export function RangeBars({
           <span className="rangebar-value">{fmt(metric, r.median)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Share of time in each ISO 11226 band, per Metric, with the longest stretch held over the first limit. */
+export function ExposureBars({ metrics }: { metrics: Partial<Record<MetricKey, MetricStats>> }) {
+  const rows = (["neck", "trunk", "upper_arm"] as MetricKey[]).filter((k) => metrics[k]?.exposure);
+  if (!rows.length) return <div className="muted small">Not available for this Session.</div>;
+  return (
+    <div className="exposure">
+      {rows.map((k) => {
+        const e = metrics[k]!.exposure!;
+        const [lo, hi] = e.limits;
+        const parts = [
+          { pct: e.below_percent, cls: "below", title: `under ${lo}°` },
+          { pct: e.between_percent, cls: "between", title: `${lo}–${hi}°` },
+          { pct: e.above_percent, cls: "above", title: `over ${hi}°` },
+        ];
+        return (
+          <div key={k} className="exposure-row">
+            <span className="exposure-label">{METRIC_INFO[k].label}</span>
+            <div className="exposure-track">
+              {parts.map((p) =>
+                p.pct > 0 ? (
+                  <div key={p.cls} className={`exposure-part ${p.cls}`} style={{ width: `${p.pct}%` }} title={`${p.title}: ${p.pct}%`}>
+                    {p.pct >= 12 ? `${Math.round(p.pct)}%` : ""}
+                  </div>
+                ) : null,
+              )}
+            </div>
+            <span className="exposure-note muted small">
+              over {lo}°: {Math.round(e.between_percent + e.above_percent)}% · longest {Math.round(e.longest_over_first_limit_s / 60)} min
+            </span>
+          </div>
+        );
+      })}
+      <div className="exposure-legend muted small">
+        <span><i className="exposure-part below" /> fine to hold</span>
+        <span><i className="exposure-part between" /> fine for limited periods</span>
+        <span><i className="exposure-part above" /> not recommended</span>
+        <span>— bands from ISO 11226; angles are approximate</span>
+      </div>
     </div>
   );
 }

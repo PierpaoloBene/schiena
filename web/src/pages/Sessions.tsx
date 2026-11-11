@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Markdown from "react-markdown";
-import { nearest, Timeline } from "../components/Charts";
+import { ExposureBars, nearest, Timeline } from "../components/Charts";
 import { PostureScene } from "../components/Scene";
 import { api, clock, fmt, METRIC_INFO, MetricKey, originFromSamples, originOf, Sample, SessionMeta, sessionTitle, toSagittal, Workstation } from "../lib";
 import { Link, navigate } from "../router";
@@ -205,6 +205,13 @@ export function SessionDetail({ id }: { id: string }) {
           ))}
           <p className="muted small">Thin line: every second. Thick line: one-minute trend. Shaded: away from the desk. Red hatching: no camera data (phone offline, call, Wi-Fi). Click to move the 3D model to that moment.</p>
           {meta.recovered && <p className="warn-text small">This Session was closed automatically after the server stopped during the recording.</p>}
+        </section>
+      )}
+
+      {meta.summary && (
+        <section className="card">
+          <h3>How long each posture was held</h3>
+          <ExposureBars metrics={meta.summary.metrics} />
         </section>
       )}
 

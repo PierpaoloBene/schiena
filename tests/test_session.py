@@ -1,3 +1,4 @@
+import pytest
 from schiena.history import COMFORT_ONLY, INCONCLUSIVE, SUCCESSFUL, evaluate, plateau
 from schiena.session import FramingGate, check_framing, comparability, find_absences, longest_still_period, summarize
 
@@ -194,3 +195,24 @@ def test_three_baselines_all_count():
     assert m["threshold"]["deciding"] == "day_to_day"
     assert 0.04 < m["reference_variability"] < 0.06  # range would be 0.06
     assert r["outcome"] == SUCCESSFUL
+
+
+def test_exposure_bands_and_longest_stretch():
+    from schiena.session import exposure
+
+    # 10 min at neck 15°, 5 min at 40°, a 4 s gap (interruption), 3 min at 40°, 2 min at 90°
+    s = [sample(t, neck=15.0) for t in range(600)]
+    s += [sample(t, neck=40.0) for t in range(600, 900)]
+    s += [sample(t, neck=40.0) for t in range(904, 1084)]
+    s += [sample(t, neck=90.0) for t in range(1084, 1204)]
+    e = exposure(s, "neck", (25.0, 85.0))
+    assert e["below_percent"] == pytest.approx(100 * 600 / 1200, abs=0.1)
+    assert e["between_percent"] == pytest.approx(100 * 480 / 1200, abs=0.1)
+    assert e["above_percent"] == pytest.approx(100 * 120 / 1200, abs=0.1)
+    assert e["longest_over_first_limit_s"] == 300  # the gap breaks the stretch; 180 s + 120 s after it
+    assert exposure([sample(t, neck=10.0) for t in range(60)], "neck", (25.0, 85.0))["longest_over_first_limit_s"] == 0
+    # a 3 s dip below the limit doesn't end the stretch, a 10 s one does
+    dip = [sample(t, neck=10.0 if 100 <= t < 103 else 40.0) for t in range(200)]
+    assert exposure(dip, "neck", (25.0, 85.0))["longest_over_first_limit_s"] == 200
+    dip = [sample(t, neck=10.0 if 100 <= t < 110 else 40.0) for t in range(200)]
+    assert exposure(dip, "neck", (25.0, 85.0))["longest_over_first_limit_s"] == 100
