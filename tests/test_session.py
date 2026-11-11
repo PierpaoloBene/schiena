@@ -154,3 +154,38 @@ def test_out_of_order_samples_are_sorted():
     s = [sample(t) for t in range(60)]
     summ = summarize(list(reversed(s)), "2026-11-11T10:00:00", 60)
     assert summ["interruptions"] == [] and summ["presence_s"] == 60
+
+
+def drifting(head_by_minute, minutes=25):
+    """Samples whose head_offset changes from minute to minute (constant within a minute)."""
+    s = [sample(t, head=head_by_minute(t // 60)) for t in range(minutes * 60)]
+    return summarize(s, "2026-11-11T10:00:00")
+
+
+def test_median_standard_error():
+    steady = summ()
+    assert steady["metrics"]["head_offset"]["median_se"] == 0
+    wobbly = drifting(lambda m: 0.20 + (0.06 if m % 2 else -0.06))
+    assert wobbly["metrics"]["head_offset"]["median_se"] > 0.015
+
+
+def test_noisy_sessions_raise_the_threshold():
+    """A 0.08 drop beats the day-to-day difference (0.03) but not the minute-to-minute noise."""
+    wobble = lambda centre: drifting(lambda m: centre + (0.15 if m % 2 else -0.15))
+    r = evaluate([wobble(0.20), wobble(0.23)], wobble(0.135),
+                 [{"metric": "head_offset", "direction": "decrease"}], [{}, {}], {})
+    m = r["metrics"][0]
+    assert m["threshold"]["deciding"] == "measurement_noise"
+    assert m["reference_variability"] > abs(m["change"])
+    assert r["outcome"] == INCONCLUSIVE
+    assert r["reference_variability"]["head_offset"] == 0.03  # what is reused is the day-to-day part
+
+
+def test_three_baselines_all_count():
+    """√2 × SD of all Baselines: one odd day weighs less than in a two-Baseline range."""
+    r = evaluate([summ(head=0.20), summ(head=0.21), summ(head=0.26)], summ(head=0.15),
+                 [{"metric": "head_offset", "direction": "decrease"}], [{}, {}, {}], {})
+    m = r["metrics"][0]
+    assert m["threshold"]["deciding"] == "day_to_day"
+    assert 0.04 < m["reference_variability"] < 0.06  # range would be 0.06
+    assert r["outcome"] == SUCCESSFUL

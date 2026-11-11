@@ -101,7 +101,11 @@ Optional, once, from the phone page **Calibrate**; shown on the dashboard **Cali
 
 Baseline 1 → Baseline 2 → one Intervention → Reassessment → keep or revert.
 
-- **Reference Variability** of a Metric = the difference between the two Baselines (floor per Metric in `history.py`). With a single Baseline (after a kept change) the previous value is reused.
+- **Reference Variability**: the change a Metric must exceed to count. It is the largest of three values (`history.reference_variability`), and the report says which one decided:
+  - *floor*: noise floor of the measurement, per Metric (`RV_FLOOR`);
+  - *day to day*: √2 × the standard deviation of the Baseline medians, i.e. the typical difference between two ordinary Sessions. With two Baselines it is their difference; with three or more all of them count. With a single Baseline (after a kept change) the previous value is reused;
+  - *measurement noise*: 2 × the standard error of the difference between the Baseline mean and the Reassessment median. Each Session's `median_se` comes from the spread of its per-minute medians (1.25 × SD / √minutes), so a Session where you moved a lot is a less precise measurement.
+  Summaries are recomputed from the Samples when an Intervention is evaluated, so older Sessions get the newer fields.
 - **Discomfort**: rated 0–10 after each Session (neck, shoulders, upper back, lower back, wrists, legs).
 - **Outcome**: *successful* if a target Metric moves the expected way by more than the Reference Variability and discomfort doesn't worsen; *comfort-only improvement* if only discomfort improves; otherwise *inconclusive*, with a probable cause (*no measurable effect*, *worse comfort*, *not comparable*, *not applied*).
 - **Comparable Sessions**: same side, body scale within 10%, similar position in the image, same time of day band. Otherwise flagged, never hidden.

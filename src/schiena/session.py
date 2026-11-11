@@ -12,6 +12,7 @@ A Sample is a dict as stored in ``samples.jsonl``::
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
@@ -216,6 +217,23 @@ def minute_variability(samples: list[dict], key: str) -> float | None:
     return statistics.median(stds) if stds else None
 
 
+def median_standard_error(samples: list[dict], key: str, min_minutes: int = 5) -> float | None:
+    """How much a Session median could move by chance: spread of the per-minute medians.
+
+    Standard error of a median ≈ 1.25 × SD / √n, with n = minutes. Minutes, not seconds, because
+    consecutive seconds are strongly correlated.
+    """
+    by_minute: dict[int, list[float]] = {}
+    for s in samples:
+        v = s["metrics"].get(key) if s.get("valid") else None
+        if v is not None:
+            by_minute.setdefault(int(s["t"] // 60), []).append(v)
+    medians = [statistics.median(v) for v in by_minute.values() if len(v) >= 20]
+    if len(medians) < min_minutes:
+        return None
+    return 1.2533 * statistics.stdev(medians) / math.sqrt(len(medians))
+
+
 def time_band(iso: str) -> str:
     h = datetime.fromisoformat(iso).hour
     return "morning" if h < 12 else "afternoon" if h < 18 else "evening"
@@ -249,6 +267,9 @@ def summarize(samples: list[dict], started_at: str, duration_s: float | None = N
             "last_third_median": round(statistics.median(vals[-third:]), 3),
             "visible_percent": round(100 * len(vals) / len(valid), 1),
         }
+        se = median_standard_error(valid, k)
+        if se is not None:
+            metrics[k]["median_se"] = round(se, 4)
     for k in ("trunk", "neck"):
         if "median" in metrics[k]:
             mv = minute_variability(valid, k)

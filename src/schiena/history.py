@@ -5,6 +5,7 @@ Discomfort is rated 0–10 per body region after each Session (0 = none, 10 = se
 
 from __future__ import annotations
 
+import math
 import statistics
 
 from .session import comparability
@@ -42,13 +43,53 @@ def metric_value(summary: dict, metric: str) -> float | None:
     return (summary["metrics"].get(metric) or {}).get("median")
 
 
-def reference_variability(baselines: list[dict], metric: str) -> float | None:
-    vals = [metric_value(b, metric) for b in baselines]
-    vals = [v for v in vals if v is not None]
+def median_se(summary: dict, metric: str) -> float | None:
+    if metric in ("longest_still_s", "absences") or metric.endswith("_minute_std"):
+        return None
+    return (summary["metrics"].get(metric) or {}).get("median_se")
+
+
+def day_to_day(baselines: list[dict], metric: str) -> float | None:
+    """Typical difference between two of the user's ordinary Sessions: √2 × SD of the Baselines.
+
+    With two Baselines this is exactly their difference; with three or more every one counts,
+    so a single unusual day weighs less.
+    """
+    vals = [v for v in (metric_value(b, metric) for b in baselines) if v is not None]
     if len(vals) < 2:
         return None
-    floor = RV_FLOOR.get(metric.removesuffix("_minute_std"), 0.0)
-    return max(floor, max(vals) - min(vals))
+    return math.sqrt(2) * statistics.stdev(vals)
+
+
+def measurement_noise(baselines: list[dict], reassessment: dict | None, metric: str) -> float | None:
+    """How far the Baseline mean and the Reassessment could differ by chance within the Sessions:
+    2 × the standard error of that difference, from the minute-by-minute spread."""
+    base = [v for v in (median_se(b, metric) for b in baselines) if v is not None]
+    after = median_se(reassessment, metric) if reassessment else None
+    if not base or after is None:
+        return None
+    var_base = sum(v * v for v in base) / len(base) ** 2  # variance of the mean of the Baseline medians
+    return 2 * math.sqrt(var_base + after * after)
+
+
+def reference_variability(baselines: list[dict], metric: str, reassessment: dict | None = None,
+                          reused: float | None = None) -> dict | None:
+    """The change a Metric must exceed to count: the largest of
+    - floor: noise floor of the measurement (RV_FLOOR);
+    - day_to_day: how much the user's ordinary Sessions differ (or a value reused from before);
+    - measurement_noise: chance variation inside the Sessions being compared.
+    """
+    parts = {
+        "floor": RV_FLOOR.get(metric.removesuffix("_minute_std"), 0.0),
+        "day_to_day": reused if reused is not None else day_to_day(baselines, metric),
+        "measurement_noise": measurement_noise(baselines, reassessment, metric),
+    }
+    if parts["day_to_day"] is None:
+        return None
+    known = {k: v for k, v in parts.items() if v is not None}
+    deciding = max(known, key=known.get)
+    return {"value": known[deciding], "deciding": deciding,
+            **{k: (round(v, 4) if v is not None else None) for k, v in parts.items()}}
 
 
 def discomfort_change(before: list[dict], after: dict) -> dict:
@@ -76,7 +117,8 @@ def evaluate(
     """Intervention Outcome from Session summaries.
 
     targets: [{"metric": "head_offset", "direction": "decrease"|"increase"}]
-    reference: Reference Variability per Metric, reused when there is a single baseline.
+    reference: day-to-day variability per Metric from earlier Baselines, reused when there is a single
+    Baseline. The returned "reference_variability" holds the day-to-day values to reuse next time.
     """
     reference = dict(reference or {})
     moves = []
@@ -84,9 +126,10 @@ def evaluate(
         m = tgt["metric"]
         base_vals = [v for v in (metric_value(b, m) for b in baselines) if v is not None]
         after = metric_value(reassessment, m)
-        rv = reference.get(m) or reference_variability(baselines, m)
-        if rv is not None:
-            reference[m] = rv
+        detail = reference_variability(baselines, m, reassessment, reused=reference.get(m))
+        rv = detail["value"] if detail else None
+        if detail is not None and detail["day_to_day"] is not None:
+            reference[m] = detail["day_to_day"]
         if not base_vals or after is None or rv is None:
             moves.append({"metric": m, "direction": tgt["direction"], "measurable": False})
             continue
@@ -101,6 +144,7 @@ def evaluate(
             "reassessment": round(after, 3),
             "change": round(change, 3),
             "reference_variability": round(rv, 3),
+            "threshold": {k: v for k, v in detail.items() if k != "value"},
             "moved_as_expected": bool(expected and abs(change) > rv),
         })
     comfort = discomfort_change(discomfort_before, discomfort_after or {})

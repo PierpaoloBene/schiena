@@ -351,6 +351,17 @@ def _intervention(h: dict, iid: str) -> dict:
     sys.exit(f"No Intervention {iid!r}.")
 
 
+def _current_summary(session: dict) -> dict:
+    """The Session summary recomputed from its Samples, so older Sessions get newer fields."""
+    from . import storage
+    from .session import summarize
+
+    samples = storage.read_samples(session["id"])
+    if not samples:
+        return session["summary"]
+    return summarize(samples, session["started_at"], session.get("duration_s"))
+
+
 def cmd_intervention(a) -> None:
     from . import storage
     from .history import evaluate
@@ -389,7 +400,7 @@ def cmd_intervention(a) -> None:
         re = storage.load_session(reassessment)
         if not re.get("discomfort"):
             print("! The Reassessment has no discomfort rating yet: comfort is treated as unchanged.", file=sys.stderr)
-        result = evaluate([b["summary"] for b in bases], re["summary"], item["targets"],
+        result = evaluate([_current_summary(b) for b in bases], _current_summary(re), item["targets"],
                           [b.get("discomfort") or {} for b in bases], re.get("discomfort"),
                           item.get("reference_variability"))
         item.update(status="evaluated", reassessment=reassessment, evaluated_at=now, **result)
