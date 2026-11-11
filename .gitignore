@@ -1,0 +1,24 @@
+# Personal data: Sessions, photos, profile, history
+data/
+
+# Downloaded or generated on each machine
+models/
+certs/
+web/dist/
+
+# Dependencies and caches
+.venv/
+web/node_modules/
+__pycache__/
+.pytest_cache/
+
+# Local recordings used during development
+recordings/
+
+# Local settings and editor files
+.claude/settings.local.json
+.env
+.DS_Store
+.idea/
+.vscode/
+*.log
