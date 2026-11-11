@@ -137,7 +137,10 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
     <div className="phone phone-scroll">
       <video ref={video} playsInline muted className="phone-video hidden" />
       <div className="calib">
-        <div className="phone-logo">Calibration</div>
+        <div className="calib-head">
+          <div className="phone-logo">Calibration</div>
+          <button className="btn ghost small" onClick={onDone}>Close</button>
+        </div>
         <p className="muted">Optional, once. It makes distances real, lets Schiena compare how you sit with how you stand when relaxed, and helps Claude rebuild your desk.</p>
         <h3 className="calib-title">You</h3>
         <div className="calib-row">
@@ -179,7 +182,7 @@ export function Calibrate({ onDone }: { onDone: () => void }) {
           </div>
         </div>
         <p className="muted small">After your first Session, ask Claude <code>/calibrate</code>: it rebuilds the desk in 3D from what the phone saw.</p>
-        <button className="btn ghost" onClick={onDone}>Done</button>
+        <button className="btn big" onClick={onDone}>Done: back to the camera</button>
       </div>
     </div>
   );

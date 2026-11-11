@@ -261,7 +261,13 @@ code { background: var(--panel-2); border: 1px solid var(--line); padding: 2px 7
 
 /* ---------- phone calibration */
 .phone-scroll { overflow-y: auto; }
-.calib { padding: max(24px, env(safe-area-inset-top)) 18px 32px; display: flex; flex-direction: column; gap: 16px; }
+.phone-scroll { -webkit-overflow-scrolling: touch; }
+.calib { padding: 0 18px max(40px, calc(env(safe-area-inset-bottom) + 24px)); display: flex; flex-direction: column; gap: 16px; }
+.calib-head {
+  position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+  margin: 0 -18px; padding: max(16px, env(safe-area-inset-top)) 18px 12px; background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(12px);
+}
+.calib-head .btn { font-size: 15px; padding: 8px 16px; }
 .calib-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); }
 .calib-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .input { width: 76px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font: inherit; font-size: 16px; }
